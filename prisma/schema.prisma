@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id        String      @id @default(uuid())
-  email     String      @unique
-  password  String
-  firstName String?
-  lastName  String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  watchlist Watchlist[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  watchlist     Watchlist[]
+  alerts        Alert[]
+  notifications Notification[]
 }
 
 model Watchlist {
@@ -26,4 +28,29 @@ model Watchlist {
   createdAt DateTime @default(now())
 
   @@unique([userId, symbol])
-}  
+}
+
+model Alert {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol        String
+  condition     String         // "above" | "below"
+  targetPrice   Float
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  triggeredAt   DateTime?
+  notifications Notification[]
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId   String?
+  alert     Alert?   @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  symbol    String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

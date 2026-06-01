@@ -9,6 +9,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -67,5 +69,23 @@ export class AuthService {
     return {
       access_token,
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.usersService.updateUser(userId, dto);
+    const { password: _, ...safe } = user;
+    return safe;
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const isValid = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!isValid) throw new BadRequestException('Current password is incorrect');
+
+    const hashed = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.updatePassword(userId, hashed);
+    return { message: 'Password updated successfully' };
   }
 }

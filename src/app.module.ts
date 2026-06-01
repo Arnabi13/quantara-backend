@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module'
 import { WatchlistModule } from './watchlist/watchlist.module'
 import { AlertsModule } from './alerts/alerts.module'
 import { NotificationsModule } from './notifications/notifications.module'
+import { BinanceModule } from './binance/binance.module'
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { NotificationsModule } from './notifications/notifications.module'
     WatchlistModule,
     AlertsModule,
     NotificationsModule,
+    BinanceModule,
   ],
 })
 export class AppModule {}

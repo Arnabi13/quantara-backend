@@ -66,6 +66,7 @@ export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
   private ws: WebSocket | null = null
   private handlers = new Set<EventHandler>()
   private tickerCache = new Map<string, TickerData>()
+  private depthCache  = new Map<string, DepthData>()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectDelay = 2000
   private destroyed = false
@@ -89,6 +90,10 @@ export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
 
   getTickerCache(): Map<string, TickerData> {
     return this.tickerCache
+  }
+
+  getDepth(symbol: string): DepthData | null {
+    return this.depthCache.get(symbol.toUpperCase()) ?? null
   }
 
   getPrice(symbol: string): number | null {
@@ -165,6 +170,7 @@ export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
         bids: bidsRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]),
         asks: asksRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]),
       }
+      this.depthCache.set(rawSymbol, depth)
       this.broadcast({ type: 'depth', symbol: depth.symbol, data: depth })
     } else if (stream.endsWith('@aggTrade')) {
       const trade: TradeData = {

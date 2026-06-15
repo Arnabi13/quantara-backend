@@ -13,7 +13,12 @@ import { Server, Socket } from 'socket.io'
 import { BinanceStreamService, BinanceEvent } from './binance-stream.service'
 
 @WebSocketGateway({
-  cors: { origin: 'http://localhost:5173', credentials: true },
+  cors: {
+    origin: process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',').map((origin) => origin.trim())
+      : 'http://localhost:5173',
+    credentials: true,
+  },
   namespace: '/market',
 })
 export class MarketGateway

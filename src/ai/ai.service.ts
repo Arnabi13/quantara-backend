@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import Groq from 'groq-sdk'
 import { Response } from 'express'
-import { BinanceStreamService } from '../binance/binance-stream.service'
+import Redis from 'ioredis'
+import { BinanceStreamService, TickerData } from '../binance/binance-stream.service'
+import { REDIS_CLIENT } from '../redis/redis.module'
 import { ChatMessage } from './dto/chat.dto'
 
 const MODEL = 'llama-3.3-70b-versatile'
@@ -77,6 +79,7 @@ export class AiService {
   constructor(
     private readonly config: ConfigService,
     private readonly binance: BinanceStreamService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     this.groq = new Groq({ apiKey: this.config.get<string>('GROQ_API_KEY') })
   }
@@ -149,7 +152,7 @@ export class AiService {
         res.write(`data: ${JSON.stringify({ type: 'tool_call', name: tc.name, args })}\n\n`)
         this.logger.log(`Tool call: ${tc.name}(${JSON.stringify(args)})`)
 
-        const result = this.executeTool(tc.name, args)
+        const result = await this.executeTool(tc.name, args)
         toolResults.push({
           role: 'tool',
           tool_call_id: tc.id,
@@ -175,18 +178,32 @@ export class AiService {
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
   }
 
-  private executeTool(name: string, args: Record<string, string>): unknown {
+  private async getTicker(sym: string): Promise<TickerData | null> {
+    // Primary: in-memory cache (always fresh when WS is connected)
+    const live = this.binance.getTickerCache().get(sym)
+    if (live) return live
+
+    // Fallback: Redis snapshot (survives brief WS reconnects, up to 10s old)
+    const cached = await this.redis.get(`binance:ticker:${sym}`)
+    if (cached) {
+      this.logger.warn(`Using Redis fallback for ${sym}`)
+      return JSON.parse(cached) as TickerData
+    }
+    return null
+  }
+
+  private async executeTool(name: string, args: Record<string, string>): Promise<unknown> {
     const sym = (args.symbol ?? '').toUpperCase()
 
     switch (name) {
       case 'get_price': {
-        const ticker = this.binance.getTickerCache().get(sym)
+        const ticker = await this.getTicker(sym)
         if (!ticker) return { error: `No data for ${sym}` }
         return { symbol: sym, price: ticker.price, currency: 'USD' }
       }
 
       case 'get_24h_stats': {
-        const ticker = this.binance.getTickerCache().get(sym)
+        const ticker = await this.getTicker(sym)
         if (!ticker) return { error: `No data for ${sym}` }
         return {
           symbol: sym,

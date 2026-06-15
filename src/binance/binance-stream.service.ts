@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
+import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
 import WebSocket from 'ws'
+import Redis from 'ioredis'
+import { REDIS_CLIENT } from '../redis/redis.module'
 
 export interface TickerData {
   symbol: string
@@ -59,6 +61,7 @@ const STREAMS = [
 ]
 
 const WS_URL = `wss://stream.binance.com:9443/stream?streams=${STREAMS.join('/')}`
+const TICKER_TTL = 10 // seconds — Redis snapshot survives brief WS reconnects
 
 @Injectable()
 export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
@@ -70,6 +73,8 @@ export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectDelay = 2000
   private destroyed = false
+
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   onModuleInit() {
     this.connect()
@@ -147,6 +152,10 @@ export class BinanceStreamService implements OnModuleInit, OnModuleDestroy {
           100,
       }
       this.tickerCache.set(ticker.symbol, ticker)
+      // Write snapshot to Redis so AI tools survive brief WS reconnects
+      this.redis
+        .setex(`binance:ticker:${ticker.symbol}`, TICKER_TTL, JSON.stringify(ticker))
+        .catch(() => { /* non-critical */ })
       this.broadcast({ type: 'ticker', symbol: ticker.symbol, data: ticker })
     } else if (stream.includes('@kline_')) {
       const k = (data.k as Record<string, unknown>)

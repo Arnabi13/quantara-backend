@@ -18,6 +18,40 @@ model User {
   watchlist     Watchlist[]
   alerts        Alert[]
   notifications Notification[]
+  positions     Position[]
+  transactions  Transaction[]
+}
+
+model Position {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol       String
+  qty          Float
+  avgBuy       Float
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+
+  @@unique([userId, symbol])
+}
+
+model Transaction {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positionId String?
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  symbol     String
+  type       TxType
+  qty        Float
+  price      Float
+  executedAt DateTime  @default(now())
+}
+
+enum TxType {
+  BUY
+  SELL
 }
 
 model Watchlist {

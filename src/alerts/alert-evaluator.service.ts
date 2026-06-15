@@ -3,8 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../prisma/prisma.service'
 import { getMockPrice } from '../shared/mock-price.util'
 import { BinanceStreamService } from '../binance/binance-stream.service'
+import { NotificationsService } from '../notifications/notifications.service'
 
-// Crypto symbols tracked by Binance (USDT pairs)
 const CRYPTO_REGEX = /USDT$/i
 
 @Injectable()
@@ -14,6 +14,7 @@ export class AlertEvaluatorService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly binance: BinanceStreamService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -24,7 +25,6 @@ export class AlertEvaluatorService implements OnModuleInit {
     })
   }
 
-  // NSE / mock symbols are still evaluated on a cron
   @Cron(CronExpression.EVERY_30_SECONDS)
   async evaluateMockSymbols() {
     const alerts = await this.prisma.alert.findMany({ where: { isActive: true } })
@@ -48,21 +48,21 @@ export class AlertEvaluatorService implements OnModuleInit {
       const isCrypto = CRYPTO_REGEX.test(symbol)
       const direction = alert.condition === 'above' ? 'rose above' : 'fell below'
 
-      const priceStr = isCrypto
-        ? `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : `₹${price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const fmt = (n: number) =>
+        isCrypto
+          ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-      const targetStr = isCrypto
-        ? `$${alert.targetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : `₹${alert.targetPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const message = `${alert.symbol} ${direction} ${fmt(alert.targetPrice)} · now at ${fmt(price)}`
 
-      await this.prisma.$transaction([
+      // Persist notification + deactivate alert atomically
+      const [notification] = await this.prisma.$transaction([
         this.prisma.notification.create({
           data: {
             userId: alert.userId,
             alertId: alert.id,
             symbol: alert.symbol,
-            message: `${alert.symbol} ${direction} ${targetStr} · now at ${priceStr}`,
+            message,
           },
         }),
         this.prisma.alert.update({
@@ -71,7 +71,16 @@ export class AlertEvaluatorService implements OnModuleInit {
         }),
       ])
 
-      this.logger.log(`Alert fired: ${alert.symbol} ${direction} ${targetStr}`)
+      this.logger.log(`Alert fired: ${message}`)
+
+      // Push to any open SSE streams for this user via Redis pub/sub
+      await this.notifications.publish(alert.userId, {
+        id: notification.id,
+        symbol: notification.symbol,
+        message: notification.message,
+        isRead: false,
+        createdAt: notification.createdAt.toISOString(),
+      })
     }
   }
 }

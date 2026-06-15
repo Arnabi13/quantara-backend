@@ -10,11 +10,14 @@ import { AlertsModule } from './alerts/alerts.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { BinanceModule } from './binance/binance.module'
 import { AiModule } from './ai/ai.module'
+import { PortfolioModule } from './portfolio/portfolio.module'
+import { RedisModule } from './redis/redis.module'
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    RedisModule,
     PrismaModule,
     UsersModule,
     AuthModule,
@@ -23,6 +26,7 @@ import { AiModule } from './ai/ai.module'
     NotificationsModule,
     BinanceModule,
     AiModule,
+    PortfolioModule,
   ],
 })
 export class AppModule {}
